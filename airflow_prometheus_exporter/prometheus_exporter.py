@@ -285,6 +285,7 @@ class MetricsCollector(object):
 
     def collect(self):
         """Collect metrics."""
+        utc_now = timezone.utcnow()
 
         # Task metrics
         t_state = GaugeMetricFamily(
@@ -319,13 +320,27 @@ class MetricsCollector(object):
             'Duration of successful tasks in seconds',
             labels=['task_id', 'dag_id', 'execution_date']
         )
+        last_task_success_time = GaugeMetricFamily(
+            'airflow_last_task_success_time',
+            'Elapsed time in seconds since last task success',
+            labels=['task_id', 'dag_id', 'execution_date']
+        )
+
         for task in get_task_duration_info():
             task_duration_value = (task.end_date - task.start_date).total_seconds()
             task_duration.add_metric(
                 [task.task_id, task.dag_id, str(task.execution_date.date())],
                 task_duration_value
             )
+
+            last_task_success_time_value = (utc_now - task.end_date).total_seconds()
+            last_task_success_time.add_metric(
+                [task.task_id, task.dag_id, str(task.execution_date.date())],
+                last_task_success_time_value
+            )
+
         yield task_duration
+        yield last_task_success_time
 
         task_failure_count = GaugeMetricFamily(
             'airflow_task_fail_count',
@@ -371,13 +386,27 @@ class MetricsCollector(object):
             'Duration of successful dag_runs in seconds',
             labels=['dag_id']
         )
+        last_dag_success_time = GaugeMetricFamily(
+            'airflow_last_dag_success_time',
+            'Elapsed time in seconds since last DAG success',
+            labels=['dag_id']
+        )
+
         for dag in get_dag_duration_info():
             dag_duration_value = (dag.end_date - dag.start_date).total_seconds()
             dag_duration.add_metric(
                 [dag.dag_id],
                 dag_duration_value
             )
+
+            last_dag_success_time_value = (utc_now - dag.end_date).total_seconds()
+            last_dag_success_time.add_metric(
+                [dag.dag_id],
+                last_dag_success_time_value
+            )
+
         yield dag_duration
+        yield last_dag_success_time
 
         # Scheduler Metrics
         dag_scheduler_delay = GaugeMetricFamily(
