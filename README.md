@@ -1,31 +1,34 @@
 # Airflow Prometheus Exporter
 
-[![Build Status](https://travis-ci.org/robinhood/airflow-prometheus-exporter.svg?branch=master)](https://travis-ci.org/robinhood/airflow-prometheus-exporter)
+The Airflow Prometheus Exporter exposes various metrics about the Scheduler, DAGs and Tasks which helps improve the
+observability of an Airflow cluster.
 
-The Airflow Prometheus Exporter exposes various metrics about the Scheduler, DAGs and Tasks which helps improve the observability of an Airflow cluster.
-
-The exporter is based on this [prometheus exporter for Airflow](https://github.com/epoch8/airflow-exporter).
+The exporter is based on this [prometheus exporter for Airflow](https://github.com/epoch8/airflow-exporter) and this [one](https://github.com/robinhood/airflow-prometheus-exporter).
 
 ## Requirements
 
 The plugin has been tested with:
 
-- Airflow >= 1.10.4
+- Airflow >= 1.10.3
 - Python 3.6+
 
-The scheduler metrics assume that there is a DAG named `canary_dag`. In our setup, the `canary_dag` is a DAG which has a tasks which perform very simple actions such as establishing database connections. This DAG is used to test the uptime of the Airflow scheduler itself.
+The scheduler metrics assume that there is a DAG named `canary_dag`. In our setup, the `canary_dag` is a DAG which has a
+tasks which perform very simple actions such as establishing database connections. This DAG is used to test the uptime
+of the Airflow scheduler itself.
 
 ## Installation
 
 The exporter can be installed as an Airflow Plugin using:
 
-```pip install airflow-prometheus-exporter```
+```bash
+pip install airflow-prometheus-exporter
+```
 
 This should ideally be installed in your Airflow virtualenv.
 
 ## Metrics
 
-Metrics will be available at
+Metrics will be available at:
 
 `http://<your_airflow_host_and_port>/admin/metrics/`
 
@@ -41,6 +44,10 @@ All the possible states are listed [here](https://github.com/apache/airflow/blob
 
 Duration of successful tasks in seconds.
 
+#### `airflow_last_task_success_time`
+
+Last time in seconds since last task success.
+
 #### `airflow_task_fail_count`
 
 Number of times a particular task has failed.
@@ -54,7 +61,12 @@ Number of DAGs with a specific status.
 All the possible states are listed [here](https://github.com/apache/airflow/blob/master/airflow/utils/state.py#L59)
 
 #### `airflow_dag_run_duration`
+
 Duration of successful DagRun in seconds.
+
+#### `airflow_last_dag_success_time`
+
+Last time in seconds since last DAG success.
 
 ### Scheduler Metrics
 
@@ -62,7 +74,8 @@ Duration of successful DagRun in seconds.
 
 Scheduling delay for a DAG Run in seconds. This metric assumes there is a `canary_dag`.
 
-The scheduling delay is measured as the delay between when a DAG is marked as `SCHEDULED` and when it actually starts `RUNNING`.
+The scheduling delay is measured as the delay between when a DAG is marked as `SCHEDULED` and when it actually starts
+`RUNNING`.
 
 #### `airflow_task_scheduler_delay`
 
