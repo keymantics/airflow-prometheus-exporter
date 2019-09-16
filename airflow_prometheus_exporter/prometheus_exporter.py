@@ -7,6 +7,7 @@ from airflow.configuration import conf
 from airflow.models import DagModel, DagRun, TaskInstance, TaskFail, XCom
 from airflow.plugins_manager import AirflowPlugin
 from airflow.settings import RBAC, Session
+from airflow.utils import timezone
 from airflow.utils.state import State
 from airflow.utils.log.logging_mixin import LoggingMixin
 from flask import Response
@@ -183,7 +184,7 @@ def get_task_failure_counts():
         )
 
 
-def get_xcom_params(task_id):
+def get_xcom_params(task_id, key):
     """XCom parameters for matching task_id's for the latest run of a DAG."""
     with session_scope(Session) as session:
         max_execution_dt_query = (
@@ -194,8 +195,7 @@ def get_xcom_params(task_id):
             .group_by(DagRun.dag_id)
             .subquery()
         )
-
-        query = session.query(XCom.dag_id, XCom.task_id, XCom.value).join(
+        query = session.query(XCom.dag_id, XCom.task_id, XCom.key, XCom.value).join(
             max_execution_dt_query,
             and_(
                 (XCom.dag_id == max_execution_dt_query.c.dag_id),
@@ -203,6 +203,7 @@ def get_xcom_params(task_id):
                     XCom.execution_date
                     == max_execution_dt_query.c.max_execution_dt
                 ),
+                (XCom.key == key),
             ),
         )
         if task_id == "all":
@@ -211,11 +212,14 @@ def get_xcom_params(task_id):
             return query.filter(XCom.task_id == task_id).all()
 
 
-def extract_xcom_parameter(value):
-    """Deserializes value stored in xcom table."""
+def extract_xcom_value(value):
+    """Deserializes XCOM value."""
     enable_pickling = conf.getboolean("core", "enable_xcom_pickling")
     if enable_pickling:
         value = pickle.loads(value)
+        if type(value) is dict:
+            return value
+        # Left for plugin backward-compatibility
         try:
             value = json.loads(value)
             return value
@@ -355,6 +359,7 @@ class MetricsCollector(object):
 
     def collect(self):
         """Collect metrics."""
+        utc_now = timezone.utcnow()
 
         # Task metrics
         t_state = GaugeMetricFamily(
@@ -389,6 +394,12 @@ class MetricsCollector(object):
             "Duration of successful tasks in seconds",
             labels=["task_id", "dag_id", "execution_date"],
         )
+        last_task_success_time = GaugeMetricFamily(
+            'airflow_last_task_success_time',
+            'Elapsed time in seconds since last task success',
+            labels=['task_id', 'dag_id', 'execution_date']
+        )
+
         for task in get_task_duration_info():
             task_duration_value = (
                 task.end_date - task.start_date
@@ -397,7 +408,15 @@ class MetricsCollector(object):
                 [task.task_id, task.dag_id, str(task.execution_date.date())],
                 task_duration_value,
             )
+
+            last_task_success_time_value = (utc_now - task.end_date).total_seconds()
+            last_task_success_time.add_metric(
+                [task.task_id, task.dag_id, str(task.execution_date.date())],
+                last_task_success_time_value
+            )
+
         yield task_duration
+        yield last_task_success_time
 
         task_failure_count = GaugeMetricFamily(
             "airflow_task_fail_count",
@@ -439,12 +458,25 @@ class MetricsCollector(object):
             "Duration of successful dag_runs in seconds",
             labels=["dag_id"],
         )
+        last_dag_success_time = GaugeMetricFamily(
+            'airflow_last_dag_success_time',
+            'Elapsed time in seconds since last DAG success',
+            labels=['dag_id']
+        )
+
         for dag in get_dag_duration_info():
             dag_duration_value = (
                 dag.end_date - dag.start_date
             ).total_seconds()
             dag_duration.add_metric([dag.dag_id], dag_duration_value)
+
+            last_dag_success_time_value = (utc_now - dag.end_date).total_seconds()
+            last_dag_success_time.add_metric(
+                [dag.dag_id],
+                last_dag_success_time_value
+            )
         yield dag_duration
+        yield last_dag_success_time
 
         # Scheduler Metrics
         dag_scheduler_delay = GaugeMetricFamily(
@@ -467,17 +499,21 @@ class MetricsCollector(object):
         xcom_params = GaugeMetricFamily(
             "airflow_xcom_parameter",
             "Airflow Xcom Parameter",
-            labels=["dag_id", "task_id"],
+            labels=["dag_id", "task_id", "xcom_key", "parameter"],
         )
 
         xcom_config = load_xcom_config()
-        for tasks in xcom_config.get("xcom_params", []):
-            for param in get_xcom_params(tasks["task_id"]):
-                xcom_value = extract_xcom_parameter(param.value)
-
-                if tasks["key"] in xcom_value:
+        for task in xcom_config.get("xcom_params", []):
+            for param in get_xcom_params(task["task_id"], task.get("xcom_key", "return_value")):
+                xcom_value = extract_xcom_value(param.value)
+                if task["key"] == "all":
+                    for k, v in xcom_value.items():
+                        xcom_params.add_metric(
+                            [param.dag_id, param.task_id, param.key, k], v
+                        )
+                if task["key"] in xcom_value:
                     xcom_params.add_metric(
-                        [param.dag_id, param.task_id], xcom_value[tasks["key"]]
+                        [param.dag_id, param.task_id, param.key, task["key"]], xcom_value[task["key"]]
                     )
 
         yield xcom_params
