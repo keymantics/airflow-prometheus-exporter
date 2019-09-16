@@ -53,7 +53,7 @@ def get_dag_state_info():
         ).all()
 
 
-def get_dag_duration_info():
+def get_dag_duration_info(state):
     """Duration of successful DAG Runs."""
     with session_scope(Session) as session:
         max_execution_dt_query = session.query(
@@ -65,8 +65,8 @@ def get_dag_duration_info():
         ).filter(
             DagModel.is_active == True,  # noqa
             DagModel.is_paused == False,
-            DagRun.state == State.SUCCESS,
-            DagRun.end_date.isnot(None),
+            DagRun.state == state,
+            DagRun.end_date.isnot(None) if state == State.SUCCESS else True,
         ).group_by(
             DagRun.dag_id
         ).subquery()
@@ -156,7 +156,7 @@ def get_task_failure_counts():
         )
 
 
-def get_task_duration_info():
+def get_task_duration_info(state):
     """Duration of successful tasks in seconds."""
     with session_scope(Session) as session:
         max_execution_dt_query = session.query(
@@ -168,8 +168,8 @@ def get_task_duration_info():
         ).filter(
             DagModel.is_active == True,  # noqa
             DagModel.is_paused == False,
-            DagRun.state == State.SUCCESS,
-            DagRun.end_date.isnot(None),
+            DagRun.state == state,
+            DagRun.end_date.isnot(None) if state == State.SUCCESS else True,
         ).group_by(
             DagRun.dag_id
         ).subquery()
@@ -179,9 +179,9 @@ def get_task_duration_info():
             TaskInstance.task_id,
             func.max(TaskInstance.execution_date).label('max_execution_dt')
         ).filter(
-            TaskInstance.state == State.SUCCESS,
+            TaskInstance.state == state,
             TaskInstance.start_date.isnot(None),
-            TaskInstance.end_date.isnot(None),
+            TaskInstance.end_date.isnot(None) if state == State.SUCCESS else True,
         ).group_by(
             TaskInstance.dag_id,
             TaskInstance.task_id
@@ -319,29 +319,32 @@ class MetricsCollector(object):
 
         task_duration = GaugeMetricFamily(
             'airflow_task_duration',
-            'Duration of successful tasks in seconds',
+            'Duration of running tasks in seconds',
             labels=['task_id', 'dag_id', 'execution_date']
         )
+
+        for task in get_task_duration_info(State.RUNNING):
+            task_duration_value = (utc_now - task.start_date).total_seconds()
+            task_duration.add_metric(
+                [task.task_id, task.dag_id, str(task.execution_date.date())],
+                task_duration_value
+            )
+
+        yield task_duration
+
         last_task_success_time = GaugeMetricFamily(
             'airflow_last_task_success_time',
             'Elapsed time in seconds since last task success',
             labels=['task_id', 'dag_id', 'execution_date']
         )
 
-        for task in get_task_duration_info():
-            task_duration_value = (task.end_date - task.start_date).total_seconds()
-            task_duration.add_metric(
-                [task.task_id, task.dag_id, str(task.execution_date.date())],
-                task_duration_value
-            )
-
+        for task in get_task_duration_info(State.SUCCESS):
             last_task_success_time_value = (utc_now - task.end_date).total_seconds()
             last_task_success_time.add_metric(
                 [task.task_id, task.dag_id, str(task.execution_date.date())],
                 last_task_success_time_value
             )
 
-        yield task_duration
         yield last_task_success_time
 
         task_failure_count = GaugeMetricFamily(
@@ -385,29 +388,32 @@ class MetricsCollector(object):
 
         dag_duration = GaugeMetricFamily(
             'airflow_dag_run_duration',
-            'Duration of successful dag_runs in seconds',
+            'Duration of running dag_runs in seconds',
             labels=['dag_id']
         )
+
+        for dag in get_dag_duration_info(State.RUNNING):
+            dag_duration_value = (utc_now - dag.start_date).total_seconds()
+            dag_duration.add_metric(
+                [dag.dag_id],
+                dag_duration_value
+            )
+
+        yield dag_duration
+
         last_dag_success_time = GaugeMetricFamily(
             'airflow_last_dag_success_time',
             'Elapsed time in seconds since last DAG success',
             labels=['dag_id']
         )
 
-        for dag in get_dag_duration_info():
-            dag_duration_value = (dag.end_date - dag.start_date).total_seconds()
-            dag_duration.add_metric(
-                [dag.dag_id],
-                dag_duration_value
-            )
-
+        for dag in get_dag_duration_info(State.SUCCESS):
             last_dag_success_time_value = (utc_now - dag.end_date).total_seconds()
             last_dag_success_time.add_metric(
                 [dag.dag_id],
                 last_dag_success_time_value
             )
 
-        yield dag_duration
         yield last_dag_success_time
 
         # Scheduler Metrics

@@ -42,7 +42,7 @@ All the possible states are listed [here](https://github.com/apache/airflow/blob
 
 #### `airflow_task_duration`
 
-Duration of successful tasks in seconds.
+Duration of running tasks in seconds.
 
 #### `airflow_last_task_success_time`
 
@@ -62,7 +62,7 @@ All the possible states are listed [here](https://github.com/apache/airflow/blob
 
 #### `airflow_dag_run_duration`
 
-Duration of successful DagRun in seconds.
+Duration of running DagRun in seconds.
 
 #### `airflow_last_dag_success_time`
 
