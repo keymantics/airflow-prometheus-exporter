@@ -198,7 +198,7 @@ def get_xcom_params(task_id):
             .subquery()
         )
 
-        query = session.query(XCom.dag_id, XCom.task_id, XCom.value).join(
+        query = session.query(XCom.dag_id, XCom.task_id, XCom.value, XCom.key).join(
             max_execution_dt_query,
             and_(
                 (XCom.dag_id == max_execution_dt_query.c.dag_id),
@@ -227,13 +227,13 @@ def extract_xcom_parameter(value):
     else:
         try:
             return json.loads(value.decode("UTF-8"))
-        except ValueError:
+        except ValueError as err:
             log = LoggingMixin().log
             log.error(
                 "Could not deserialize the XCOM value from JSON. "
                 "If you are using pickles instead of JSON "
                 "for XCOM, then you need to enable pickle "
-                "support for XCOM in your airflow config."
+                f"support for XCOM in your airflow config. : {err}"
             )
             return {}
 
@@ -538,7 +538,7 @@ class MetricsCollector(object):
         xcom_params = GaugeMetricFamily(
             "airflow_xcom_parameter",
             "Airflow Xcom Parameter",
-            labels=["dag_id", "task_id"],
+            labels=["dag_id", "task_id", "xcom_key"],
         )
 
         xcom_config = load_xcom_config()
@@ -548,7 +548,7 @@ class MetricsCollector(object):
 
                 if tasks["key"] in xcom_value:
                     xcom_params.add_metric(
-                        [param.dag_id, param.task_id], xcom_value[tasks["key"]]
+                        [param.dag_id, param.task_id, param.key], xcom_value[tasks["key"]]
                     )
 
         yield xcom_params
