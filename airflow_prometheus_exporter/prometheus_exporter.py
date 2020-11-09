@@ -546,10 +546,9 @@ class MetricsCollector(object):
             for param in get_xcom_params(tasks["task_id"]):
                 xcom_value = extract_xcom_parameter(param.value)
 
-                if tasks["key"] in xcom_value:
-                    xcom_params.add_metric(
-                        [param.dag_id, param.task_id, param.key], xcom_value[tasks["key"]]
-                    )
+                xcom_params.add_metric(
+                    [param.dag_id, param.task_id, param.key], xcom_value
+                )
 
         yield xcom_params
 
