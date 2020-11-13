@@ -183,7 +183,7 @@ def get_task_failure_counts():
         )
 
 
-def get_xcom_params(task_id):
+def get_xcom_params(task_id, key):
     """XCom parameters for matching task_id's for the latest run of a DAG."""
     with session_scope(Session) as session:
         max_execution_dt_query = (
@@ -194,8 +194,7 @@ def get_xcom_params(task_id):
             .group_by(DagRun.dag_id)
             .subquery()
         )
-
-        query = session.query(XCom.dag_id, XCom.task_id, XCom.value).join(
+        query = session.query(XCom.dag_id, XCom.task_id, XCom.key, XCom.value).join(
             max_execution_dt_query,
             and_(
                 (XCom.dag_id == max_execution_dt_query.c.dag_id),
@@ -203,6 +202,7 @@ def get_xcom_params(task_id):
                     XCom.execution_date
                     == max_execution_dt_query.c.max_execution_dt
                 ),
+                (XCom.key == key),
             ),
         )
         if task_id == "all":
@@ -211,11 +211,14 @@ def get_xcom_params(task_id):
             return query.filter(XCom.task_id == task_id).all()
 
 
-def extract_xcom_parameter(value):
-    """Deserializes value stored in xcom table."""
+def extract_xcom_value(value):
+    """Deserializes XCOM value."""
     enable_pickling = conf.getboolean("core", "enable_xcom_pickling")
     if enable_pickling:
         value = pickle.loads(value)
+        if type(value) is dict:
+            return value
+        # Left for plugin backward-compatibility
         try:
             value = json.loads(value)
             return value
@@ -439,17 +442,21 @@ class MetricsCollector(object):
         xcom_params = GaugeMetricFamily(
             "airflow_xcom_parameter",
             "Airflow Xcom Parameter",
-            labels=["dag_id", "task_id"],
+            labels=["dag_id", "task_id", "xcom_key", "parameter"],
         )
 
         xcom_config = load_xcom_config()
-        for tasks in xcom_config.get("xcom_params", []):
-            for param in get_xcom_params(tasks["task_id"]):
-                xcom_value = extract_xcom_parameter(param.value)
-
-                if tasks["key"] in xcom_value:
+        for task in xcom_config.get("xcom_params", []):
+            for param in get_xcom_params(task["task_id"], task.get("xcom_key", "return_value")):
+                xcom_value = extract_xcom_value(param.value)
+                if task["key"] == "all":
+                    for k, v in xcom_value.items():
+                        xcom_params.add_metric(
+                            [param.dag_id, param.task_id, param.key, k], v
+                        )
+                if task["key"] in xcom_value:
                     xcom_params.add_metric(
-                        [param.dag_id, param.task_id], xcom_value[tasks["key"]]
+                        [param.dag_id, param.task_id, param.key, task["key"]], xcom_value[task["key"]]
                     )
 
         yield xcom_params

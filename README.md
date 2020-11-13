@@ -45,36 +45,56 @@ Duration of successful tasks in seconds.
 
 Number of times a particular task has failed.
 
-#### `airflow_xcom_param`
+### XCOM Specific Metrics
 
-value of configurable parameter in xcom table
+#### `airflow_xcom_parameter`
 
-xcom fields is deserialized as a dictionary and if key is found for a paticular task-id, the value is reported as a guage
+Value of configurable parameter from XCOM table.
 
-Add task / key combinations in config.yaml:
+XCOM values are identified by a `task_id` and an optional `xcom_key` (defaults to 'return_value').
+Each XCOM value must be a dictionary. If `key` is found in this dictionary, the parameter is extracted and reported as a gauge.
 
-```bash
+Add `task_id`, `xcom_key` and `key` combinations in config.yaml:
+
+```yaml
 xcom_params:
   -
     task_id: abc
-    key: count
+    key: record_count
   -
     task_id: def
+    xcom_key: prometheus_metrics
     key: errors
-
 ```
 
+The special `task_id` value 'all' will match against all airflow tasks:
 
-a task_id of 'all' will match against all airflow tasks:
-
-```
+```yaml
 xcom_params:
  -
     task_id: all
-    key: count
+    key: record_count
 ```
 
+The special `key` value 'all' will match against all parameters inside Xcom value.
 
+```yaml
+xcom_params:
+ -
+    task_id: all
+    xcom_key: prometheus_metrics
+    key: all
+```
+
+To generate XCOM values for default key 'return_value', simply return from your dag
+```python
+return {'record_count': 123}
+```
+
+Custom XCOM key can also be used. From your DAG, export the XCOM value like:
+```python
+kwargs['ti'].xcom_push(key='prometheus_metrics', value={'errors': 2, 'data_size': 1024})
+```
 
 ### Dag Specific Metrics
 

@@ -4,4 +4,7 @@ xcom_params:
     task_id: all
     key: record_count
 
-
+  -
+    task_id: all
+    xcom_key: prometheus_metrics
+    key: all
