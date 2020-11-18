@@ -52,6 +52,37 @@ Last time in seconds since last task success.
 
 Number of times a particular task has failed.
 
+#### `airflow_xcom_param`
+
+value of configurable parameter in xcom table
+
+xcom fields is deserialized as a dictionary and if key is found for a paticular task-id, the value is reported as a guage
+
+Add task / key combinations in config.yaml:
+
+```bash
+xcom_params:
+  -
+    task_id: abc
+    key: count
+  -
+    task_id: def
+    key: errors
+
+```
+
+
+a task_id of 'all' will match against all airflow tasks:
+
+```
+xcom_params:
+ -
+    task_id: all
+    key: count
+```
+
+
+
 ### Dag Specific Metrics
 
 #### `airflow_dag_status`
