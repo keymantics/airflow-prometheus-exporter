@@ -188,12 +188,15 @@ def get_task_failure_counts():
 
 
 def get_xcom_params(task_id, key):
-    """XCom parameters for matching task_id's for the latest run of a DAG."""
+    """XCom parameters for matching task_id's for the latest successful run of a DAG."""
     with session_scope(Session) as session:
         max_execution_dt_query = (
             session.query(
                 DagRun.dag_id,
                 func.max(DagRun.execution_date).label("max_execution_dt"),
+            )
+            .filter(
+                DagRun.state == State.SUCCESS,
             )
             .group_by(DagRun.dag_id)
             .subquery()
