@@ -64,7 +64,7 @@ def get_dag_state_info():
 
 
 def get_dag_duration_info(state):
-    """Duration of successful DAG Runs."""
+    """Duration of DAG Runs."""
     with session_scope(Session) as session:
         max_execution_dt_query = (
             session.query(
@@ -246,7 +246,7 @@ def extract_xcom_value(value):
 
 
 def get_task_duration_info(state):
-    """Duration of successful tasks in seconds."""
+    """Duration of tasks in seconds."""
     with session_scope(Session) as session:
         max_execution_dt_query = (
             session.query(
